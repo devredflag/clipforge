@@ -7,3 +7,4 @@ data/
 .pytest_cache/
 *.egg-info/
 node_modules/
+/ClipForge/
