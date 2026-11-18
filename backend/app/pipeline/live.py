@@ -55,9 +55,10 @@ class Segment:
 
 class LiveSession:
     def __init__(self, source_id: int, stream_url: str, settings, transcriber: Transcriber, *,
-                 ffmpeg_input_args: list[str] | None = None, poll: float = 2.0):
+                 ffmpeg_input_args: list[str] | None = None, poll: float = 2.0, audio_url: str | None = None):
         self.source_id = source_id
         self.stream_url = stream_url
+        self.audio_url = audio_url
         self.settings = settings
         self.transcriber = transcriber
         self.input_args = ffmpeg_input_args or []
@@ -77,9 +78,15 @@ class LiveSession:
     # ---- gravação ------------------------------------------------------------------------
     def _start_recorder(self) -> None:
         cmd = [media.ffmpeg_bin(), "-y", "-v", "error"]
+        reconnect = ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5"]
         if self.stream_url.startswith("http"):
-            cmd += ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5"]
-        cmd += [*self.input_args, "-i", self.stream_url, "-map", "0:v:0?", "-map", "0:a:0?", "-c", "copy",
+            cmd += reconnect
+        cmd += [*self.input_args, "-i", self.stream_url]
+        if self.audio_url:  # vídeo e áudio em streams separados
+            cmd += [*reconnect, "-i", self.audio_url, "-map", "0:v:0", "-map", "1:a:0"]
+        else:
+            cmd += ["-map", "0:v:0?", "-map", "0:a:0?"]
+        cmd += ["-c", "copy",
                 "-f", "segment", "-segment_time", str(SEGMENT_SECONDS), "-segment_format", "mpegts",
                 "-reset_timestamps", "1", "-segment_list", self.list_path.name, "-segment_list_type", "csv",
                 "seg_%05d.ts"]
@@ -236,6 +243,6 @@ def run_live(source_id: int, info: dict, *, transcriber: Transcriber | None = No
         if stop():
             db.set_progress(source_id, "stopped", detail="Cancelado antes de começar")
             return
-    url = (stream_url_fn or dl.live_stream_url)(db.get_source(source_id)["url"], settings)
-    session = LiveSession(source_id, url, settings, transcriber or get_transcriber(settings))
+    url, audio_url = (stream_url_fn or dl.live_stream_url)(db.get_source(source_id)["url"], settings)
+    session = LiveSession(source_id, url, settings, transcriber or get_transcriber(settings), audio_url=audio_url)
     session.run()

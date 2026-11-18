@@ -78,20 +78,25 @@ def download_video(url: str, dest_dir: str | Path, settings,
     return files[0]
 
 
-def live_stream_url(url: str, settings) -> str:
-    """URL direta (HLS) da live em andamento, para o ffmpeg gravar."""
+def live_stream_url(url: str, settings) -> tuple[str, str | None]:
+    """URLs diretas (HLS) da live em andamento para o ffmpeg gravar: (vídeo, áudio separado ou None)."""
     h = int(settings.max_height)
+    # o YouTube costuma servir lives com vídeo e áudio separados (sem formato combinado)
     opts = {**_base_opts(settings), "skip_download": True,
-            "format": f"best[height<={h}]/best", "live_from_start": False}
+            "format": f"b[height<={h}]/bv*[height<={h}]+ba/bv*+ba/b", "live_from_start": False}
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
     except yt_dlp.utils.DownloadError as exc:
         raise _friendly(exc) from exc
+    pair = info.get("requested_formats") or []
+    if len(pair) == 2 and all(f.get("url") for f in pair):
+        video, audio = (pair if pair[0].get("vcodec") != "none" else pair[::-1])
+        return video["url"], audio["url"]
     stream = info.get("url")
     if not stream:
         fmts = [f for f in info.get("formats", []) if f.get("url") and f.get("vcodec") != "none"]
         if not fmts:
             raise DownloadError("Não consegui obter a URL da transmissão ao vivo.")
         stream = fmts[-1]["url"]
-    return stream
+    return stream, None
