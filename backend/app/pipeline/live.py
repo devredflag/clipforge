@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import csv
 import logging
+import math
 import subprocess
 import threading
 import time
@@ -55,10 +56,12 @@ class Segment:
 
 class LiveSession:
     def __init__(self, source_id: int, stream_url: str, settings, transcriber: Transcriber, *,
-                 ffmpeg_input_args: list[str] | None = None, poll: float = 2.0, audio_url: str | None = None):
+                 ffmpeg_input_args: list[str] | None = None, poll: float = 2.0, audio_url: str | None = None,
+                 back_segments: int = 0):
         self.source_id = source_id
         self.stream_url = stream_url
         self.audio_url = audio_url
+        self.back_segments = back_segments  # >0: começa N segmentos antes do ponto ao vivo
         self.settings = settings
         self.transcriber = transcriber
         self.input_args = ffmpeg_input_args or []
@@ -79,6 +82,8 @@ class LiveSession:
     def _start_recorder(self) -> None:
         cmd = [media.ffmpeg_bin(), "-y", "-v", "error"]
         reconnect = ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5"]
+        if self.back_segments:
+            reconnect += ["-live_start_index", str(-self.back_segments)]
         if self.stream_url.startswith("http"):
             cmd += reconnect
         cmd += [*self.input_args, "-i", self.stream_url]
@@ -225,6 +230,25 @@ class LiveSession:
                 _sessions.pop(self.source_id, None)
 
 
+def _back_segments(start_at: float | None, info: dict, url: str) -> int:
+    """Quantos segmentos voltar a partir do ponto ao vivo para começar em `start_at` (segundos desde o início da live).
+
+    O YouTube só guarda a última ~1 h da live no HLS: pedidos mais antigos começam no ponto mais antigo disponível.
+    """
+    if start_at is None or not url.startswith("http"):
+        return 0
+    try:
+        seg, window = dl.hls_window(url)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Não consegui ler a janela da live (%s); gravando do ponto ao vivo.", exc)
+        return 0
+    started = info.get("started_at")
+    back = window if started is None else min(window, max(0.0, time.time() - started - start_at))
+    if started is not None and time.time() - started - start_at > window:
+        log.warning("Início pedido está fora do que o YouTube guarda; começando %.0f min antes do ao vivo.", window / 60)
+    return math.ceil(back / seg) if seg > 0 else 0
+
+
 def run_live(source_id: int, info: dict, *, transcriber: Transcriber | None = None,
              stream_url_fn: Callable | None = None, stop: Callable[[], bool] = lambda: False, **_: object) -> None:
     settings = config.get_settings()
@@ -243,6 +267,9 @@ def run_live(source_id: int, info: dict, *, transcriber: Transcriber | None = No
         if stop():
             db.set_progress(source_id, "stopped", detail="Cancelado antes de começar")
             return
-    url, audio_url = (stream_url_fn or dl.live_stream_url)(db.get_source(source_id)["url"], settings)
-    session = LiveSession(source_id, url, settings, transcriber or get_transcriber(settings), audio_url=audio_url)
+    src = db.get_source(source_id)
+    url, audio_url = (stream_url_fn or dl.live_stream_url)(src["url"], settings)
+    back = _back_segments(src.get("start_at"), info, url) if info.get("live_status") == "is_live" else 0
+    session = LiveSession(source_id, url, settings, transcriber or get_transcriber(settings), audio_url=audio_url,
+                          back_segments=back)
     session.run()

@@ -450,12 +450,27 @@ async function refresh(force = false) {
   } finally { busy = false; }
 }
 
+$("#startMode").addEventListener("change", () => {
+  $("#startAt").hidden = $("#startMode").value !== "at";
+  if (!$("#startAt").hidden) $("#startAt").focus();
+});
+
+// "1:30:00", "90:00" ou "45" → segundos; null se inválido
+function parseTime(s) {
+  const parts = s.trim().split(":");
+  if (!parts.length || parts.length > 3 || parts.some((p) => !/^\d+$/.test(p))) return null;
+  return parts.reduce((acc, p) => acc * 60 + Number(p), 0);
+}
+
 $("#addForm").addEventListener("submit", guard(async (e) => {
   e.preventDefault();
   const urls = $("#urls").value.split(/\s+/).map((s) => s.trim()).filter(Boolean);
+  const mode = $("#startMode").value;
+  const start_at = mode === "start" ? 0 : mode === "at" ? parseTime($("#startAt").value) : null;
+  if (mode === "at" && start_at === null) { toast("Informe o ponto de início como hh:mm:ss (ex.: 1:30:00).", true); return; }
   let ok = 0, dup = 0;
   for (const url of urls) {
-    try { const r = await post("/api/sources", { url }); r.duplicate ? dup++ : ok++; }
+    try { const r = await post("/api/sources", { url, start_at }); r.duplicate ? dup++ : ok++; }
     catch (err) { toast(`${url}: ${err.message}`, true); }
   }
   $("#urls").value = "";

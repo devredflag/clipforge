@@ -16,7 +16,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from . import config, db, jobs, media, metrics, scheduler
 from . import publishers
@@ -83,6 +83,7 @@ auth = [Depends(require_key)]
 
 class NewSource(BaseModel):
     url: str
+    start_at: float | None = Field(default=None, ge=0)  # segundos; None = ao vivo / início do vídeo
 
 
 class ClipPatch(BaseModel):
@@ -157,7 +158,7 @@ def add_source(body: NewSource) -> dict:
                     "ORDER BY id DESC", [url])
     if active:
         return {**_source_out(active), "duplicate": True}
-    sid = db.create_source(url)
+    sid = db.create_source(url, start_at=body.start_at)
     jobs.submit(sid)
     return _source_out(db.get_source(sid))
 

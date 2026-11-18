@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS sources (
     stage_detail TEXT,
     progress REAL NOT NULL DEFAULT 0,
     duration REAL,
+    start_at REAL,                              -- segundos; NULL = ao vivo (live) / início (vídeo)
     error TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -106,6 +107,8 @@ def connect() -> Iterator[sqlite3.Connection]:
 def init_db() -> None:
     with connect() as c:
         c.executescript(SCHEMA)
+        if "start_at" not in {r[1] for r in c.execute("PRAGMA table_info(sources)")}:  # bancos antigos
+            c.execute("ALTER TABLE sources ADD COLUMN start_at REAL")
 
 
 def query(sql: str, args: tuple | list = ()) -> list[dict[str, Any]]:
@@ -152,9 +155,9 @@ def update(table: str, row_id: int, **values: Any) -> None:
 
 # ---- atalhos de domínio -------------------------------------------------------------------
 
-def create_source(url: str, kind: str = "vod") -> int:
+def create_source(url: str, kind: str = "vod", start_at: float | None = None) -> int:
     ts = now_iso()
-    return insert("sources", url=url, kind=kind, status="queued", created_at=ts, updated_at=ts)
+    return insert("sources", url=url, kind=kind, start_at=start_at, status="queued", created_at=ts, updated_at=ts)
 
 
 def get_source(source_id: int) -> dict[str, Any] | None:

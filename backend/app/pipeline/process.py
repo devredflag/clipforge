@@ -61,8 +61,9 @@ def process_vod(source_id: int, *, transcriber: Transcriber | None = None,
 
     # 1) baixar -------------------------------------------------------------------------------
     db.set_progress(source_id, "downloading", 0.0, "Baixando vídeo")
+    start = {"start_at": src["start_at"]} if src.get("start_at") else {}
     video = (downloader or dl.download_video)(
-        src["url"], work, settings, lambda p: db.set_progress(source_id, "downloading", p * 0.15)
+        src["url"], work, settings, lambda p: db.set_progress(source_id, "downloading", p * 0.15), **start
     )
     info = media.probe(video)
     db.update("sources", source_id, duration=info["duration"])

@@ -43,11 +43,12 @@ def probe_url(url: str, settings) -> dict:
         "thumbnail": info.get("thumbnail") or "",
         "duration": info.get("duration"),
         "live_status": info.get("live_status") or ("is_live" if info.get("is_live") else "not_live"),
+        "started_at": info.get("release_timestamp"),  # epoch do início da live (se houver)
     }
 
 
 def download_video(url: str, dest_dir: str | Path, settings,
-                   progress: Callable[[float], None] | None = None) -> Path:
+                   progress: Callable[[float], None] | None = None, start_at: float | None = None) -> Path:
     dest_dir = Path(dest_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
     h = int(settings.max_height)
@@ -66,6 +67,8 @@ def download_video(url: str, dest_dir: str | Path, settings,
         "progress_hooks": [hook],
         "overwrites": True,
     }
+    if start_at:  # baixa só a partir desse ponto
+        opts["download_ranges"] = yt_dlp.utils.download_range_func(None, [(start_at, float("inf"))])
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
             ydl.extract_info(url, download=True)
@@ -100,3 +103,16 @@ def live_stream_url(url: str, settings) -> tuple[str, str | None]:
             raise DownloadError("Não consegui obter a URL da transmissão ao vivo.")
         stream = fmts[-1]["url"]
     return stream, None
+
+
+def hls_window(playlist_url: str) -> tuple[float, float]:
+    """(duração de cada segmento, quanto da live o YouTube ainda guarda) em segundos."""
+    import re
+    import urllib.request
+
+    with urllib.request.urlopen(playlist_url, timeout=20) as r:
+        text = r.read().decode("utf-8", "replace")
+    durs = [float(x) for x in re.findall(r"#EXTINF:([\d.]+)", text)]
+    target = re.search(r"#EXT-X-TARGETDURATION:(\d+)", text)
+    seg = float(target.group(1)) if target else (durs[0] if durs else 5.0)
+    return seg, sum(durs)

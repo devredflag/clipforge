@@ -50,6 +50,13 @@
     <form id="addForm" class="add">
       <input id="urls" type="text" autocomplete="off"
              placeholder="Cole um link de vídeo ou live do YouTube  —  vários? separe por espaço ou quebra de linha">
+      <select id="startMode" aria-label="De onde começar"
+              title="Lives: o YouTube só guarda a última ~1 h; pedidos mais antigos começam no ponto mais antigo disponível.">
+        <option value="now">Ao vivo / do começo do vídeo</option>
+        <option value="start">Desde o início (live)</option>
+        <option value="at">A partir de…</option>
+      </select>
+      <input id="startAt" type="text" inputmode="numeric" placeholder="hh:mm:ss" aria-label="Começar em (hh:mm:ss)" hidden>
       <button type="submit" class="primary">Gerar cortes</button>
     </form>
     <p id="addMsg" class="addmsg"></p>
