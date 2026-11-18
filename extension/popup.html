@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <h1><span class="logo">✂</span> ClipForge <span id="status" class="chip">…</span></h1>
+
+  <section id="current" hidden>
+    <p class="muted">Aba atual</p>
+    <p id="currentUrl" class="url"></p>
+    <button id="sendCurrent" class="primary">Gerar cortes deste vídeo</button>
+  </section>
+
+  <section>
+    <p class="muted">Ou cole links (um por linha)</p>
+    <textarea id="links" rows="3" placeholder="https://www.youtube.com/watch?v=…"></textarea>
+    <button id="sendLinks" class="primary">Enviar links</button>
+  </section>
+
+  <p id="msg" class="msg"></p>
+  <p><a id="openPanel" href="#">Abrir painel</a> · <a id="toggleCfg" href="#">Configurações</a></p>
+
+  <section id="cfg" hidden>
+    <label>Endereço do servidor
+      <input id="serverUrl" type="url" placeholder="http://localhost:8765">
+    </label>
+    <label>Token da API
+      <input id="token" type="password" placeholder="conteúdo de data/api_token.txt" autocomplete="off">
+    </label>
+    <button id="save">Salvar</button>
+  </section>
+  <script src="common.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

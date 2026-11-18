@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ClipForge</title>
+  <link rel="icon" href="/static/favicon.png">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="app">
+  <!-- Navegação lateral -->
+  <aside class="sidebar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 512 512" width="30" height="30" aria-hidden="true">
+        <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffd24a"/><stop offset="1" stop-color="#ff7a1e"/></linearGradient></defs>
+        <rect x="26" y="26" width="460" height="460" rx="120" fill="url(#g)"/>
+        <rect x="152" y="96" width="208" height="320" rx="40" fill="none" stroke="#fff" stroke-width="26"/>
+        <path d="M222 196 L222 316 Q222 330 235 323 L330 262 Q342 255 330 247 L235 189 Q222 182 222 196 Z" fill="#fff"/>
+      </svg>
+      <span class="brand-name">ClipForge</span>
+    </div>
+
+    <nav id="tabs">
+      <button data-tab="dashboard" class="active"><span class="ic">◆</span> Painel</button>
+      <button data-tab="sources"><span class="ic">▣</span> Vídeos &amp; lives</button>
+      <button data-tab="clips"><span class="ic">◧</span> Cortes</button>
+      <button data-tab="queue"><span class="ic">▦</span> Agenda</button>
+      <button data-tab="accounts"><span class="ic">◉</span> Contas</button>
+      <button data-tab="settings"><span class="ic">⚙</span> Configurações</button>
+    </nav>
+
+    <div class="side-foot">
+      <span id="conn" class="chip">conectando…</span>
+      <button id="tokenBtn" class="iconbtn" title="Token de acesso">🔑</button>
+    </div>
+  </aside>
+
+  <!-- Área de trabalho -->
+  <main class="work">
+    <header class="topbar">
+      <div>
+        <h1 id="viewTitle">Painel</h1>
+        <p id="viewSub" class="sub">Visão geral, avisos e desempenho dos seus cortes.</p>
+      </div>
+    </header>
+
+    <section id="tab-dashboard" class="tab active"></section>
+
+    <form id="addForm" class="add">
+      <input id="urls" type="text" autocomplete="off"
+             placeholder="Cole um link de vídeo ou live do YouTube  —  vários? separe por espaço ou quebra de linha">
+      <button type="submit" class="primary">Gerar cortes</button>
+    </form>
+    <p id="addMsg" class="addmsg"></p>
+
+    <section id="tab-sources" class="tab"></section>
+
+    <section id="tab-clips" class="tab">
+      <div class="toolbar">
+        <div class="segmented" id="clipFilterWrap">
+          <select id="clipFilter" aria-label="Filtrar cortes">
+            <option value="">Todos os cortes</option>
+            <option value="ready">Aguardando aprovação</option>
+            <option value="approved">Aprovados</option>
+            <option value="rejected">Rejeitados</option>
+            <option value="failed">Com erro</option>
+          </select>
+        </div>
+      </div>
+      <div id="clipGrid" class="grid"></div>
+    </section>
+
+    <section id="tab-queue" class="tab"></section>
+    <section id="tab-accounts" class="tab"></section>
+    <section id="tab-settings" class="tab"></section>
+  </main>
+</div>
+
+<!-- Player -->
+<dialog id="player" class="modal">
+  <video id="playerVideo" controls playsinline></video>
+  <div class="modal-foot"><button id="playerClose" class="ghost">Fechar</button></div>
+</dialog>
+
+<!-- Token -->
+<dialog id="tokenDlg" class="modal">
+  <form method="dialog" id="tokenForm">
+    <h3>Token de acesso</h3>
+    <p class="muted">Fica no arquivo <code>data/api_token.txt</code> e aparece no terminal ao iniciar o servidor.
+      É o mesmo token usado pela extensão do Chrome. No aplicativo de desktop isto é preenchido sozinho.</p>
+    <input id="tokenInput" type="password" placeholder="Cole o token aqui" autocomplete="off">
+    <div class="modal-foot"><button class="primary" value="ok">Entrar</button></div>
+  </form>
+</dialog>
+
+<div id="toast"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
