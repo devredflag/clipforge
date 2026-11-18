@@ -144,6 +144,12 @@ const fmtDur = (s) => {
   const p = (n) => String(n).padStart(2, "0");
   return h ? `${h}:${p(m)}:${p(sec)}` : `${p(m)}:${p(sec)}`;
 };
+const fmtBytes = (b) => {
+  if (!b) return "0 MB";
+  const u = ["B", "KB", "MB", "GB", "TB"]; let i = 0;
+  while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
+  return `${b.toLocaleString("pt-BR", { maximumFractionDigits: i >= 3 ? 1 : 0 })} ${u[i]}`;
+};
 const mediaUrl = (path) => `${path}?token=${encodeURIComponent(TOKEN)}`;
 const ACTIVE = ["queued", "downloading", "transcribing", "analyzing", "rendering", "recording"];
 const dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -348,12 +354,18 @@ function renderSources(list) {
         el("div", { class: "meta" }, icon(s.kind === "live" ? "radio" : isUpload ? "file" : "youtube"), s.channel || kind),
         (s.channel && s.channel !== kind) || startInfo ? el("div", { class: "meta" }, kind + startInfo) : null),
       sourceState(s),
-      el("div", { class: "count" }, el("small", {}, icon("scissors"), "Cortes gerados"), el("b", {}, `${s.clip_count} corte${s.clip_count === 1 ? "" : "s"}`)),
+      el("div", { class: "count" }, el("small", {}, icon("scissors"), "Cortes gerados"), el("b", {}, `${s.clip_count} corte${s.clip_count === 1 ? "" : "s"}`),
+        el("small", { title: "Vídeo original/gravação + cortes, no seu disco" }, `Ocupa ${fmtBytes((s.original_bytes || 0) + (s.clips_bytes || 0))}`)),
       el("div", { class: "acts" },
         active ? el("button", { class: "ghost", onclick: guard(async () => { await post(`/api/sources/${s.id}/stop`); toast(s.status === "recording" ? "Encerrando a live e cortando o restante…" : "Interrompendo…"); refresh(); }) }, icon("stop"), s.status === "recording" ? "Encerrar live" : "Parar") : null,
         ["failed", "stopped"].includes(s.status) ? el("button", { class: "ghost", onclick: guard(async () => { await post(`/api/sources/${s.id}/retry`); refresh(); }) }, icon("refresh"), "Tentar de novo") : null,
         s.clip_count ? el("button", { class: "primary", onclick: () => { clipSourceSel = String(s.id); $("#clipFilter").value = ""; switchTab("clips"); } }, icon("play"), "Ver cortes") : null,
-        el("button", { class: "iconbtn", title: "Remover", "aria-label": "Remover", onclick: guard(async () => { if (confirm("Remover esta fonte e todos os cortes dela?")) { await api(`/api/sources/${s.id}`, { method: "DELETE" }); refresh(); } }) }, icon("trash"))),
+        !active && s.original_bytes > 0 ? el("button", { class: "ghost", title: "Apaga o vídeo original / gravação da live. Os cortes continuam.", onclick: guard(async () => {
+          const extra = isUpload ? " O arquivo enviado não poderá ser reprocessado." : "";
+          if (!confirm(`Apagar o vídeo original/gravação (${fmtBytes(s.original_bytes)})? Os ${s.clip_count} corte(s) continuam salvos.${extra}`)) return;
+          const r = await post(`/api/sources/${s.id}/free-space`); toast(`${fmtBytes(r.freed_bytes)} liberados.`); refresh();
+        }) }, `Liberar ${fmtBytes(s.original_bytes)}`) : null,
+        el("button", { class: "iconbtn", title: "Remover vídeo e todos os cortes", "aria-label": "Remover vídeo e todos os cortes", onclick: guard(async () => { if (confirm(`Remover este vídeo e todos os ${s.clip_count} corte(s)? Libera ${fmtBytes((s.original_bytes || 0) + (s.clips_bytes || 0))}.`)) { await api(`/api/sources/${s.id}`, { method: "DELETE" }); refresh(); } }) }, icon("trash"))),
       s.error ? el("div", { class: "err" }, s.error) : null);
   }));
 }
@@ -466,7 +478,7 @@ function renderClips(list, sources) {
           el("button", { class: "small danger", disabled: c.status === "rejected", onclick: guard(async () => { await post(`/api/clips/${c.id}/reject`); refresh(); }) }, icon("x"), "Rejeitar")),
         el("div", { class: "more" },
           c.has_video ? el("a", { href: mediaUrl(`/api/clips/${c.id}/video`), download: "" }, "Baixar vídeo") : null,
-          el("button", { onclick: guard(async () => { if (confirm("Excluir este corte?")) { await api(`/api/clips/${c.id}`, { method: "DELETE" }); refresh(); } }) }, "Excluir"))));
+          el("button", { class: "del", onclick: guard(async () => { if (confirm("Excluir este corte? O vídeo dele é apagado do disco.")) { await api(`/api/clips/${c.id}`, { method: "DELETE" }); refresh(); } }) }, icon("trash"), "Excluir corte"))));
   }));
 }
 function openPlayer(c) {

@@ -108,10 +108,25 @@ def _clip_out(c: dict) -> dict:
     }
 
 
+def _dir_bytes(path: Path) -> int:
+    total = 0
+    for root, _, files in os.walk(path):
+        for f in files:
+            try:
+                total += os.path.getsize(os.path.join(root, f))
+            except OSError:
+                pass
+    return total
+
+
 def _source_out(s: dict, with_clips: bool = False) -> dict:
     out = dict(s)
     clips = db.query("SELECT * FROM clips WHERE source_id = ? ORDER BY idx", [s["id"]])
     out["clip_count"] = len(clips)
+    sid = str(s["id"])
+    # vídeo original/gravação (o que "Liberar espaço" apaga) e cortes renderizados
+    out["original_bytes"] = _dir_bytes(config.DATA_DIR / "sources" / sid) + _dir_bytes(config.DATA_DIR / "live" / sid)
+    out["clips_bytes"] = _dir_bytes(config.DATA_DIR / "clips" / sid)
     if with_clips:
         out["clips"] = [_clip_out(c) for c in clips]
     return out
@@ -225,6 +240,28 @@ def retry_source(source_id: int) -> dict:
     db.update("sources", source_id, status="queued", error=None, progress=0)
     jobs.submit(source_id)
     return _source_out(db.get_source(source_id))
+
+
+@app.post("/api/sources/{source_id}/free-space", dependencies=auth)
+def free_space(source_id: int) -> dict:
+    """Apaga o vídeo original / gravação da live (e o áudio extraído), mantendo os cortes e a transcrição."""
+    s = db.get_source(source_id)
+    if not s:
+        raise HTTPException(404, "Fonte não encontrada")
+    if s["status"] in ("queued", "downloading", "transcribing", "analyzing", "rendering", "recording"):
+        raise HTTPException(409, "Espere terminar (ou clique em Parar) antes de liberar espaço")
+    freed = 0
+    work = config.DATA_DIR / "sources" / str(source_id)
+    if work.exists():
+        for f in work.iterdir():
+            if f.name == "words.json":  # transcrição: pequena e evita transcrever de novo num "Tentar de novo"
+                continue
+            freed += _dir_bytes(f) if f.is_dir() else f.stat().st_size
+            shutil.rmtree(f, ignore_errors=True) if f.is_dir() else f.unlink(missing_ok=True)
+    live = config.DATA_DIR / "live" / str(source_id)
+    freed += _dir_bytes(live)
+    shutil.rmtree(live, ignore_errors=True)
+    return {"ok": True, "freed_bytes": freed}
 
 
 @app.delete("/api/sources/{source_id}", dependencies=auth)

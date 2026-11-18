@@ -118,3 +118,26 @@ def test_save_credentials_rejects_injection(client, monkeypatch, tmp_path):
     r = client.post("/api/accounts/tiktok/credentials",
                     json={"client_id": "abcd", "client_secret": "segredo", "redirect_uri": "http://exemplo.com/cb"})
     assert r.status_code == 422
+
+
+def test_free_space_keeps_clips_and_transcript(client, monkeypatch):
+    monkeypatch.setattr(jobs, "submit", lambda sid: None)
+    sid = db.create_source("https://youtu.be/abc123")
+    db.update("sources", sid, status="done")
+    work = config.DATA_DIR / "sources" / str(sid); work.mkdir(parents=True)
+    (work / "video.mp4").write_bytes(b"v" * 5000); (work / "audio.wav").write_bytes(b"a" * 1000)
+    (work / "words.json").write_text("[]", encoding="utf-8")
+    live = config.DATA_DIR / "live" / str(sid); live.mkdir(parents=True); (live / "seg_00001.ts").write_bytes(b"s" * 3000)
+    clips = config.DATA_DIR / "clips" / str(sid); clips.mkdir(parents=True); (clips / "c1.mp4").write_bytes(b"c" * 700)
+    before = next(s for s in client.get("/api/sources").json() if s["id"] == sid)
+    assert before["original_bytes"] == 9002 and before["clips_bytes"] == 700
+    r = client.post(f"/api/sources/{sid}/free-space")
+    assert r.status_code == 200 and r.json()["freed_bytes"] == 9000
+    assert not (work / "video.mp4").exists() and not live.exists()
+    assert (work / "words.json").exists() and (clips / "c1.mp4").exists()
+
+
+def test_free_space_refused_while_processing(client):
+    sid = db.create_source("https://youtu.be/abc123")
+    db.update("sources", sid, status="recording")
+    assert client.post(f"/api/sources/{sid}/free-space").status_code == 409
