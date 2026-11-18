@@ -31,6 +31,24 @@ def load_env_file(path: Path | None = None) -> None:
 load_env_file()
 
 
+def save_env(updates: dict[str, str], path: Path | None = None) -> None:
+    """Grava/atualiza chaves no .env (usado pela tela Contas) e aplica na hora, sem reiniciar."""
+    path = path or ROOT / ".env"
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    pending = dict(updates)
+    for i, line in enumerate(lines):
+        key = line.split("=", 1)[0].strip()
+        if "=" in line and not line.lstrip().startswith("#") and key in pending:
+            lines[i] = f"{key}={pending.pop(key)}"
+    lines += [f"{k}={v}" for k, v in pending.items()]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    for k, v in updates.items():
+        if v:
+            os.environ[k] = v
+        else:
+            os.environ.pop(k, None)
+
+
 def env(name: str, default: str = "") -> str:
     return os.environ.get(name, default)
 

@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from . import config, db, jobs, media, metrics, scheduler
 from . import publishers
 from .publishers.base import PublishError
+from .pipeline.download import UPLOAD_PREFIX
 
 log = logging.getLogger("clipforge")
 
@@ -101,7 +102,7 @@ def _clip_out(c: dict) -> dict:
         "id": c["id"], "source_id": c["source_id"], "idx": c["idx"], "start": c["start"], "end": c["end"],
         "duration": round(c["end"] - c["start"], 1), "score": c["score"], "title": c["title"],
         "full_title": f"{c['title']} | {s.part_label} {c['idx']}", "description": c["description"],
-        "reason": c["reason"], "status": c["status"], "error": c["error"],
+        "reason": c["reason"], "status": c["status"], "error": c["error"], "created_at": c["created_at"],
         "has_video": bool(c["file"] and Path(c["file"]).exists()),
         "posts": posts,
     }
@@ -159,6 +160,36 @@ def add_source(body: NewSource) -> dict:
     if active:
         return {**_source_out(active), "duplicate": True}
     sid = db.create_source(url, start_at=body.start_at)
+    jobs.submit(sid)
+    return _source_out(db.get_source(sid))
+
+
+UPLOAD_EXTS = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
+UPLOAD_MAX = 10 * 1024**3  # 10 GB
+
+
+@app.post("/api/sources/upload", dependencies=auth)
+async def upload_source(file: UploadFile = File(...)) -> dict:
+    name = Path(file.filename or "video.mp4").name
+    ext = Path(name).suffix.lower()
+    if ext not in UPLOAD_EXTS:
+        raise HTTPException(422, "Envie um vídeo MP4, MOV, MKV, WEBM ou AVI")
+    sid = db.create_source(f"{UPLOAD_PREFIX}{name}")
+    db.update("sources", sid, title=Path(name).stem, channel="Arquivo enviado")
+    work = config.DATA_DIR / "sources" / str(sid)
+    work.mkdir(parents=True, exist_ok=True)
+    dest, size = work / f"video{ext}", 0
+    try:
+        with open(dest, "wb") as out:
+            while chunk := await file.read(1024 * 1024):
+                size += len(chunk)
+                if size > UPLOAD_MAX:
+                    raise HTTPException(413, "Arquivo maior que 10 GB")
+                out.write(chunk)
+    except BaseException:
+        db.execute("DELETE FROM sources WHERE id = ?", [sid])
+        shutil.rmtree(work, ignore_errors=True)
+        raise
     jobs.submit(sid)
     return _source_out(db.get_source(sid))
 
@@ -344,18 +375,48 @@ def list_accounts() -> list[dict]:
         acc = db.get_account(name)
         out.append({"platform": name, "configured": mod.is_configured(), "connected": bool(acc),
                     "display_name": acc["display_name"] if acc else None,
+                    "connected_at": acc["connected_at"] if acc else None,
                     "redirect_uri": mod.redirect_uri()})
     return out
 
 
+# chaves que a tela Contas pode gravar no .env, por plataforma: (id, segredo, redirect opcional)
+CREDENTIAL_KEYS = {
+    "youtube": ("YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REDIRECT_URI"),
+    "tiktok": ("TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET", "TIKTOK_REDIRECT_URI"),
+}
+
+
+class Credentials(BaseModel):
+    client_id: str = Field(min_length=4, max_length=300)
+    client_secret: str = Field(min_length=4, max_length=300)
+    redirect_uri: str | None = Field(default=None, max_length=500)
+
+
+@app.post("/api/accounts/{platform}/credentials", dependencies=auth)
+def save_credentials(platform: str, body: Credentials) -> dict:
+    if platform not in CREDENTIAL_KEYS:
+        raise HTTPException(404, "Plataforma desconhecida")
+    values = [body.client_id.strip(), body.client_secret.strip(), (body.redirect_uri or "").strip()]
+    if any(ch in v for v in values for ch in "\r\n\"'"):  # o .env é linha a linha
+        raise HTTPException(422, "Valor inválido")
+    if values[2] and not values[2].startswith(("https://", "http://localhost", "http://127.0.0.1")):
+        raise HTTPException(422, "O endereço de retorno precisa começar com https://")
+    config.save_env(dict(zip(CREDENTIAL_KEYS[platform], values)))
+    return {"ok": True, "redirect_uri": publishers.get(platform).redirect_uri()}
+
+
 @app.post("/api/auth/{platform}/start", dependencies=auth)
-def auth_start(platform: str) -> dict:
+def auth_start(platform: str, open_browser: bool = False) -> dict:
     if platform not in publishers.REGISTRY:
         raise HTTPException(404, "Plataforma desconhecida")
     try:
         url = publishers.get(platform).start_auth(secrets.token_urlsafe(16))
     except PublishError as exc:
         raise HTTPException(422, str(exc)) from exc
+    if open_browser:  # a janela do app não abre abas: o login vai para o navegador padrão
+        import webbrowser
+        webbrowser.open(url)
     return {"url": url}
 
 

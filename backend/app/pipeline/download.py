@@ -11,6 +11,9 @@ class DownloadError(RuntimeError):
     pass
 
 
+UPLOAD_PREFIX = "upload://"  # fonte enviada do computador: o arquivo já está em data/sources/<id>/video.*
+
+
 def _base_opts(settings) -> dict:
     opts: dict = {"quiet": True, "no_warnings": True, "noplaylist": True}
     if settings.cookies_from_browser:
@@ -31,6 +34,9 @@ def _friendly(exc: Exception) -> DownloadError:
 
 def probe_url(url: str, settings) -> dict:
     """Metadados sem baixar. Retorna dict normalizado, incluindo `live_status`."""
+    if url.startswith(UPLOAD_PREFIX):
+        return {"id": None, "title": Path(url[len(UPLOAD_PREFIX):]).stem, "channel": "Arquivo enviado",
+                "thumbnail": "", "duration": None, "live_status": "not_live", "started_at": None}
     try:
         with yt_dlp.YoutubeDL({**_base_opts(settings), "skip_download": True}) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -51,6 +57,11 @@ def download_video(url: str, dest_dir: str | Path, settings,
                    progress: Callable[[float], None] | None = None, start_at: float | None = None) -> Path:
     dest_dir = Path(dest_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
+    if url.startswith(UPLOAD_PREFIX):
+        uploaded = [f for f in sorted(dest_dir.glob("video.*"))]
+        if not uploaded:
+            raise DownloadError("O arquivo enviado não foi encontrado — envie o vídeo de novo.")
+        return uploaded[0]
     h = int(settings.max_height)
 
     def hook(d: dict) -> None:

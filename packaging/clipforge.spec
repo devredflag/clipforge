@@ -40,7 +40,7 @@ hiddenimports += [
     "uvicorn.logging", "uvicorn.loops.auto", "uvicorn.loops.asyncio",
     "uvicorn.protocols.http.auto", "uvicorn.protocols.http.h11_impl",
     "uvicorn.protocols.websockets.auto", "uvicorn.lifespan.on", "uvicorn.lifespan.off",
-    "app.main", "app.desktop",
+    "app.main", "app.desktop", "multipart", "python_multipart",
 ]
 
 block_cipher = None
