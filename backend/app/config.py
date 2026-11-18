@@ -4,12 +4,14 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import sys
 import threading
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[2]  # pasta clipforge/
+# empacotado: pasta do .exe (no onefile, __file__ fica numa pasta temporária apagada ao fechar)
+ROOT = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[2]
 DATA_DIR = Path(os.environ.get("CLIPFORGE_DATA", ROOT / "data"))
 
 

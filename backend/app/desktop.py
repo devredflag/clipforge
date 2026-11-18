@@ -17,6 +17,16 @@ import time
 import webbrowser
 from pathlib import Path
 
+# .exe sem console (PyInstaller console=False): stdout/stderr são None e bibliotecas quebram ao escrever neles,
+# derrubando o servidor sem aviso. Manda tudo para um log ao lado do .exe (antes do basicConfig).
+if sys.stdout is None or sys.stderr is None:
+    try:
+        _log_file = open(Path(sys.executable).resolve().parent / "clipforge.log", "a", encoding="utf-8", buffering=1)
+    except OSError:  # pasta sem permissão de escrita
+        _log_file = open(os.devnull, "w", encoding="utf-8")
+    sys.stdout = sys.stdout or _log_file
+    sys.stderr = sys.stderr or _log_file
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("clipforge.desktop")
 
@@ -108,7 +118,8 @@ def main() -> int:
         _show_blocking_message(
             f"{APP_NAME} — falha ao iniciar",
             "O servidor interno não respondeu a tempo. Tente abrir o ClipForge novamente.\n"
-            "Se persistir, rode pelo terminal para ver o erro: python -m app.desktop",
+            "Se persistir, veja o erro no arquivo clipforge.log (na pasta do ClipForge)\n"
+            "ou rode pelo terminal: python -m app.desktop",
         )
         return 1
 
