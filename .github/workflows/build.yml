@@ -11,6 +11,9 @@ jobs:
   build:
     name: ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
+    # Windows usa cp1252 no stdout; sem isto os prints com "✓" quebram o fetch_ffmpeg.py.
+    env:
+      PYTHONUTF8: "1"
     strategy:
       fail-fast: false
       matrix:
