@@ -12,6 +12,7 @@ import shutil
 import stat
 import sys
 import tarfile
+import time
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -19,19 +20,41 @@ from pathlib import Path
 BIN = Path(__file__).resolve().parent / "bin"
 
 
-def _download(url: str) -> bytes:
-    print(f"  baixando {url}")
-    req = urllib.request.Request(url, headers={"User-Agent": "ClipForge-build"})
-    with urllib.request.urlopen(req, timeout=120) as r:
-        return r.read()
+def _download(url: str, attempts: int = 3) -> bytes:
+    for n in range(1, attempts + 1):
+        print(f"  baixando {url} (tentativa {n})")
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "ClipForge-build"})
+            with urllib.request.urlopen(req, timeout=300) as r:
+                return r.read()
+        except Exception as exc:  # noqa: BLE001 — sites de build às vezes dão 503 passageiro
+            if n == attempts:
+                raise
+            print(f"  falhou ({exc}); tentando de novo em {10 * n}s")
+            time.sleep(10 * n)
+    raise RuntimeError("inalcançável")
 
 
 def _make_exec(path: Path) -> None:
     path.chmod(path.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
 
 
+WINDOWS_SOURCES = (
+    "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
+    # alternativa se o gyan.dev estiver fora do ar
+    "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
+)
+
+
 def fetch_windows() -> None:
-    data = _download("https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip")
+    for i, url in enumerate(WINDOWS_SOURCES):
+        try:
+            data = _download(url)
+            break
+        except Exception as exc:  # noqa: BLE001
+            if i == len(WINDOWS_SOURCES) - 1:
+                raise
+            print(f"  fonte indisponível ({exc}); usando a próxima")
     with zipfile.ZipFile(io.BytesIO(data)) as z:
         for name in z.namelist():
             base = os.path.basename(name)
