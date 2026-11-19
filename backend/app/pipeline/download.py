@@ -6,6 +6,8 @@ from typing import Callable
 
 import yt_dlp
 
+from .. import media
+
 
 class DownloadError(RuntimeError):
     pass
@@ -16,6 +18,9 @@ UPLOAD_PREFIX = "upload://"  # fonte enviada do computador: o arquivo já está 
 
 def _base_opts(settings) -> dict:
     opts: dict = {"quiet": True, "no_warnings": True, "noplaylist": True}
+    ffmpeg = media.ffmpeg_bin()
+    if Path(ffmpeg).is_file():  # ffmpeg embutido no .exe não está no PATH: o yt-dlp precisa dele para juntar vídeo+áudio
+        opts["ffmpeg_location"] = str(Path(ffmpeg).parent)
     if settings.cookies_from_browser:
         opts["cookiesfrombrowser"] = (settings.cookies_from_browser,)
     return opts
